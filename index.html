@@ -283,7 +283,25 @@ h2{font-size:16px;font-weight:600;margin:20px 0 4px}
   .pa .pb{break-before:page}
   .pa .fc,.pa .charts,.pa .vd,.pa .ib,.pa .pf,.pa li{break-inside:avoid}
   .pa .vb{border-style:solid}
-}</style>
+}
+/* ===== ویرایش تفسیر توسط مشاور و چاپ دسته‌جمعی ===== */
+.te{display:block;width:100%;min-height:360px;padding:12px;font:inherit;font-size:14px;line-height:1.9;color:var(--foreground);background:var(--field);border:1px solid var(--input);border-radius:var(--radius);outline:none;resize:vertical;transition:border-color var(--motion) var(--ease)}
+.te:focus{border-color:var(--ring)}
+.em{min-height:24px;margin-top:8px;font-size:13px;line-height:1.7;color:var(--muted-foreground)}
+.em.bad{color:var(--destructive)}
+.eh{font-size:12px;line-height:1.9;color:var(--muted-foreground);margin:0 0 8px}
+.ed-b{border-color:var(--warning)!important;color:var(--warning)!important}
+.ib.mine{border-inline-start-color:var(--warning);background:var(--muted)}
+.acts{flex-wrap:wrap}
+.acts[hidden]{display:none}
+.btn[disabled],.ghost[disabled]{opacity:.5}
+@media print{
+  .pa .ed-b{display:none}
+  .pa .pp{break-before:page}
+  .pa .pp:first-child{break-before:auto}
+  .pa .pp .note{margin-top:6px}
+}
+</style>
 </head>
 <body>
 <div class="wrap" id="wrap">
@@ -315,6 +333,7 @@ h2{font-size:16px;font-weight:600;margin:20px 0 4px}
           <option value="none">در انتظار تفسیر</option>
         </select><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></div>
         <button class="ghost" id="rf" type="button">بروزرسانی</button>
+        <button class="ghost" id="pall" type="button" disabled>چاپ صفحه اول همه</button>
         <button class="ghost" id="lo" type="button">خروج</button>
       </div>
       <div class="hint" id="cnt"></div>
@@ -364,7 +383,14 @@ h2{font-size:16px;font-weight:600;margin:20px 0 4px}
   </main>
 </div>
 <dialog id="dlg" aria-labelledby="dt"><button class="x" id="x" type="button" aria-label="بستن"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button><div id="dc"></div>
-  <div class="acts"><button class="btn" id="pr" type="button">چاپ / ذخیره PDF</button><button class="ghost" id="cl" type="button">بستن</button></div>
+  <div id="ed" hidden>
+    <h2>ویرایش تفسیر</h2>
+    <p class="eh">متن تفسیر را مستقیم ویرایش کنید یا نظر خودتان را اضافه کنید. هر بخش در یک خط است؛ برای اینکه چینش گزارش و چاپ مرتب بماند، ابتدای خط‌ها (مثل «جمع‌بندی:»، «تحلیل فردی:»، «نقاط قوت:»، «توصیه:» و خط‌های «•») را نگه دارید. برای نظر شخصی خودتان یک خط جدید با «نظر مشاور:» بنویسید. «ثبت» که بزنید، همین متن ذخیره می‌شود و در گزارش و چاپ استفاده می‌شود.</p>
+    <textarea class="te" id="te" aria-label="متن تفسیر" spellcheck="false"></textarea>
+    <div class="em" id="em" role="status"></div>
+    <div class="acts"><button class="btn" id="es" type="button">ثبت تفسیر</button><button class="ghost" id="eo" type="button">بازگشت به متن اولیه</button><button class="ghost" id="ec" type="button">انصراف</button></div>
+  </div>
+  <div class="acts" id="ac"><button class="btn" id="pr" type="button">چاپ / ذخیره PDF</button><button class="ghost" id="eb" type="button">ویرایش تفسیر</button><button class="ghost" id="cl" type="button">بستن</button></div>
 </dialog>
 
 <div class="pa" id="pa"></div>
@@ -394,7 +420,7 @@ function parseI(t){
     if(l.startsWith("ثبت تکراری"))o.dup=l;
     else if(l.startsWith("جمع‌بندی:"))o.verdict=l.slice(9).trim();
     else if(l.startsWith("•")){const m=l.match(/^•\s*(.+?)\s+—\s+نمره\s+(\S+)\s+\((.+?)\):\s*(.*)$/);o.factors.push(m?{t:m[1],s:m[2],b:m[3],x:m[4]}:{t:"",s:"",b:"",x:l.slice(1).trim()})}
-    else{const i=l.indexOf(":");i>0&&i<20?o.other.push([l.slice(0,i),l.slice(i+1).trim()]):o.other.push(["",l])}});
+    else{const i=l.indexOf(":");if(i>0&&i<20)o.other.push([l.slice(0,i),l.slice(i+1).trim()]);else{const L=o.other[o.other.length-1];L&&L[0]?L[1]+=" "+l:o.other.push(["",l])}}});
   return o;
 }
 function vcat(v){if(!v)return["none","در انتظار تفسیر",9];const c=VC.find(c=>v.startsWith(c[1]));return c?[c[0],c[2],c[3]]:["ok",v.split(" — ")[0],4]}
@@ -429,7 +455,7 @@ async function load(){
   try{
     const r=await api({action:"list",token});
     if(!r.ok){if(r.error==="auth"){logout();$("le").textContent="نشست منقضی شد. دوباره وارد شوید.";return}throw new Error(r.error)}
-    rows=r.rows.map((x,i)=>{const it=parseI(x[15]),c=vcat(it&&it.verdict);return{t:x[0],name:x[1],age:Number(x[2]),ms:x[3],edu:x[4],s:x.slice(5,10).map(Number),n:i+1,it,vc:c[0],vl:c[1],vr:c[2]}}).reverse();
+    rows=r.rows.map((x,i)=>{const o={t:x[0],name:x[1],age:Number(x[2]),ms:x[3],edu:x[4],s:x.slice(5,10).map(Number),n:i+1,orig:String(x[15]||""),ed:String(x[16]||"")};recalc(o);return o}).reverse();
     loading=false;draw();
   }catch(e){loading=false;rows=[];draw();$("cnt").textContent="دریافت اطلاعات ناموفق بود."}
 }
@@ -443,11 +469,12 @@ function view(){
 function draw(){
   const v=view(),pages=Math.max(1,Math.ceil(v.length/PS));pg=Math.min(pg,pages);
   $("cnt").textContent=loading?"در حال دریافت…":fa(v.length)+" مورد";
+  $("pall").disabled=loading||!v.length;$("pall").textContent="چاپ صفحه اول همه"+(loading||!v.length?"":" ("+fa(v.length)+")");
   document.querySelectorAll("th[data-k]").forEach(h=>{const a=h.dataset.k===sk;h.setAttribute("aria-sort",a?(sd==="asc"?"ascending":"descending"):"none");h.querySelector(".ar").textContent=a?(sd==="asc"?"↑":"↓"):"↕"});
   let h;
   if(loading)h=Array(5).fill('<tr class="sk">'+"<td><i></i></td>".repeat(8)+"</tr>").join("");
   else if(!v.length)h='<tr><td colspan="8"><div class="empty"><b>موردی یافت نشد</b><br>عبارت جستجو را تغییر دهید یا پس از ثبت پرسشنامه‌ها، بروزرسانی کنید.</div></td></tr>';
-  else h=v.slice((pg-1)*PS,pg*PS).map(r=>`<tr><td>${fa(r.n)}</td><td>${esc(r.name)}</td><td>${fa(r.age)}</td><td class="hm">${esc(r.ms)}</td><td class="hm">${esc(r.edu)}</td><td><span class="vb v-${r.vc}">${esc(r.vl)}</span>${r.it&&r.it.dup?'<span class="dup">تکراری</span>':""}</td><td>${fmt(r.t)}</td><td><button class="btn" data-n="${r.n}" type="button">مشاهده نتایج</button></td></tr>`).join("");
+  else h=v.slice((pg-1)*PS,pg*PS).map(r=>`<tr><td>${fa(r.n)}</td><td>${esc(r.name)}</td><td>${fa(r.age)}</td><td class="hm">${esc(r.ms)}</td><td class="hm">${esc(r.edu)}</td><td><span class="vb v-${r.vc}">${esc(r.vl)}</span>${r.it&&r.it.dup?'<span class="dup">تکراری</span>':""}${r.ed?'<span class="dup">ویرایش‌شده</span>':""}</td><td>${fmt(r.t)}</td><td><button class="btn" data-n="${r.n}" type="button">مشاهده نتایج</button></td></tr>`).join("");
   $("tb").innerHTML=h;
   $("pg").innerHTML=pages>1&&!loading?`<span>صفحه‌ی ${fa(pg)} از ${fa(pages)}</span><span><button class="ghost" data-p="-1" type="button"${pg<=1?" disabled":""}>قبلی</button><button class="ghost" data-p="1" type="button"${pg>=pages?" disabled":""}>بعدی</button></span>`:"";
 }
@@ -495,41 +522,80 @@ function profile(s){
   const tb=`<table class="sr"><tr><th>عامل</th><th>نمره</th><th>سطح</th></tr>${F.map((f,i)=>`<tr><td>${f[0]}</td><td>${fa(s[i])}</td><td>${BN[band(s[i])]}</td></tr>`).join("")}</table>`;
   return`<div class="pf"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="نیمرخ شخصیتی">${zones}${cols}${grid}<polyline class="pl" points="${pts.map(p=>p.join(",")).join(" ")}"/>${dots}</svg>${tb}</div>`;
 }
-function open(r){
+const NOTE_TXT="سطح‌بندی بر پایه نمره خام (۱۲ تا ۶۰): تا ۲۴ خیلی پایین، ۲۵ تا ۳۱ پایین، ۳۲ تا ۴۰ متوسط، ۴۱ تا ۴۸ بالا، ۴۹ و بالاتر خیلی بالا. تفاسیر کمکی‌اند و جایگزین ارزیابی و قضاوت بالینی مشاور نیستند.";
+// متن مؤثر تفسیر: اگر مشاور ویرایش کرده باشد همان، وگرنه تفسیر اولیه
+function recalc(r){const it=parseI(r.ed||r.orig),c=vcat(it&&it.verdict);r.it=it;r.vc=c[0];r.vl=c[1];r.vr=c[2]}
+function headHTML(r,screen){
+  return `<div class="pr-h"><span>کلینیک سپهر آرامش — گزارش پرسشنامه</span><span>${fmt(r.t)}</span></div>
+  <h1${screen?' id="dt"':""}>${esc(r.name)}</h1>
+  <div class="tags"><span>سن: ${fa(r.age)}</span><span>${esc(r.ms)}</span><span>${esc(r.edu)}</span>${r.ed?'<span class="ed-b">تفسیر ویرایش‌شده توسط مشاور</span>':""}</div>`;
+}
+// p1 = صفحه اول چاپ (تا پیش از شکست صفحه)، p2 = صفحه دوم چاپ
+function sections(r,tipOn){
   const bars=r.s.map((v,i)=>`<div class="bl"><b>${F[i][0]}</b><span class="bv"><span>${fa(v)} از ${fa(60)}</span><span>${fa(pc(v))}٪</span><span>${BN[band(v)]}</span></span></div><div class="tr ${fit(i,v)}"><i style="width:${Math.max(pc(v),3)}%"></i></div>`).join("");
-  const it=r.it;let body;
+  const charts=`<div class="charts"><div class="rw">${radar(r.s)}${tipOn?'<div class="tip" id="tip" hidden></div>':""}</div><div>${bars}</div></div>`;
+  const it=r.it;
   if(it){
-    const cls={"نقاط ریسک":"risk","عبارت‌های حساس":"flag","توصیه":"rec","نقاط قوت":"good","پرسش‌های مصاحبه":"ask","تحلیل فردی":"an"};
+    const cls={"نقاط ریسک":"risk","عبارت‌های حساس":"flag","توصیه":"rec","نقاط قوت":"good","پرسش‌های مصاحبه":"ask","تحلیل فردی":"an","نظر مشاور":"mine"};
     const LK=["توصیه","عبارت‌های حساس","نقاط قوت","نقاط ریسک","پرسش‌های مصاحبه"];
     const list=(k,s)=>{if(!LK.includes(k))return esc(s);const p=s.replace(/\.$/,"").split("؛").map(x=>x.trim()).filter(Boolean);return p.length>1?"<ul>"+p.map(x=>`<li>${esc(x)}</li>`).join("")+"</ul>":esc(s)};
     const fi=t=>["روان","برونگر","انعطاف","توافق","وظیفه"].findIndex(w=>t.includes(w));
     const fcs=it.factors.map(f=>`<div class="fc"><b>${esc(f.t)}</b><span class="lv ${fi(f.t)>=0?"t"+fit(fi(f.t),r.s[fi(f.t)]):""}">${esc(f.b)}</span><span class="sc">نمره ${esc(f.s)}</span><br>${esc(f.x)}</div>`).join("");
     const an=it.other.filter(([k])=>k==="تحلیل فردی").map(([k,x])=>`<div class="ib an"><b>${esc(k)}</b>${esc(x)}</div>`).join("");
     const oth=it.other.filter(([k])=>k!=="تحلیل فردی").map(([k,x])=>k?`<div class="ib ${cls[k]||""}"><b>${esc(k)}</b>${list(k,x)}</div>`:`<p class="note">${esc(x)}</p>`).join("");
-    body=`<div class="vd v-${r.vc}">جمع‌بندی: ${esc(it.verdict)}${it.dup?`<small>${esc(it.dup)}</small>`:""}</div>
-    <h2>نیمرخ شخصیتی</h2>${profile(r.s)}
-    <div class="charts"><div class="rw">${radar(r.s)}<div class="tip" id="tip" hidden></div></div><div>${bars}</div></div>
-    ${an}
-    <div class="pb"><h2>تفسیر عامل‌ها برای شغل نگهبان مسلح</h2>${fcs}</div>${oth}`;
-  }else{
-    const cards=r.s.map((v,i)=>`<div class="fc"><b>${F[i][0]}</b><span class="lv">${BN[band(v)]}</span><br>${F[i][1][lvl(v)]}</div>`).join("");
-    body=`<div class="vd v-none">تفسیر اختصاصی این فرد هنوز ثبت نشده است.<small>تا ثبت تفسیر، توضیح‌های عمومی زیر نمایش داده می‌شود.</small></div>
-    <h2>نیمرخ شخصیتی</h2>${profile(r.s)}
-    <div class="charts"><div class="rw">${radar(r.s)}<div class="tip" id="tip" hidden></div></div><div>${bars}</div></div><div class="pb">${cards}</div>`;
+    const vd=it.verdict?`<div class="vd v-${r.vc}">جمع‌بندی: ${esc(it.verdict)}${it.dup?`<small>${esc(it.dup)}</small>`:""}</div>`:"";
+    return{
+      p1:`${vd}<h2>نیمرخ شخصیتی</h2>${profile(r.s)}${charts}${an}`,
+      p2:`<div class="pb">${fcs?`<h2>تفسیر عامل‌ها برای شغل نگهبان مسلح</h2>${fcs}`:""}</div>${oth}`};
   }
-  $("dc").innerHTML=`<div class="pr-h"><span>کلینیک سپهر آرامش — گزارش پرسشنامه</span><span>${fmt(r.t)}</span></div>
-  <h1 id="dt">${esc(r.name)}</h1>
-  <div class="tags"><span>سن: ${fa(r.age)}</span><span>${esc(r.ms)}</span><span>${esc(r.edu)}</span></div>
-  ${body}
-  <p class="note">سطح‌بندی بر پایه نمره خام (۱۲ تا ۶۰): تا ۲۴ خیلی پایین، ۲۵ تا ۳۱ پایین، ۳۲ تا ۴۰ متوسط، ۴۱ تا ۴۸ بالا، ۴۹ و بالاتر خیلی بالا. تفاسیر کمکی‌اند و جایگزین ارزیابی و قضاوت بالینی مشاور نیستند.</p>`;
-  tips(r);$("dlg").showModal();document.body.style.overflow="hidden";
+  const cards=r.s.map((v,i)=>`<div class="fc"><b>${F[i][0]}</b><span class="lv">${BN[band(v)]}</span><br>${F[i][1][lvl(v)]}</div>`).join("");
+  return{
+    p1:`<div class="vd v-none">تفسیر اختصاصی این فرد هنوز ثبت نشده است.<small>تا ثبت تفسیر، توضیح‌های عمومی زیر نمایش داده می‌شود.</small></div>
+    <h2>نیمرخ شخصیتی</h2>${profile(r.s)}${charts}`,
+    p2:`<div class="pb">${cards}</div>`};
 }
+let cur=null;
+function edit(on){
+  $("dc").hidden=on;$("ed").hidden=!on;$("ac").hidden=on;
+  if(on){$("te").value=cur.ed||cur.orig||"";$("em").textContent="";$("em").className="em";$("es").disabled=false;$("te").focus();$("te").setSelectionRange(0,0);$("te").scrollTop=0}
+}
+function open(r){
+  cur=r;edit(false);
+  const s=sections(r,true);
+  $("dc").innerHTML=headHTML(r,true)+s.p1+s.p2+`<p class="note">${NOTE_TXT}</p>`;
+  tips(r);
+  if(!$("dlg").open){$("dlg").showModal();document.body.style.overflow="hidden"}
+}
+$("eb").onclick=()=>edit(true);
+$("ec").onclick=()=>edit(false);
+$("eo").onclick=()=>{$("te").value=cur.orig||"";$("em").textContent="متن اولیه در کادر برگشت؛ برای اعمال، «ثبت تفسیر» را بزنید.";$("em").className="em"};
+$("es").onclick=async()=>{
+  const r=cur,em=$("em"),txt=$("te").value.replace(/\r/g,"").trim();
+  const send=txt===String(r.orig||"").trim()?"":txt; // مساوی متن اولیه = حذف نسخه ویرایشی
+  $("es").disabled=true;em.className="em";em.textContent="در حال ثبت…";
+  try{
+    const res=await api({action:"saveInterp",token,row:r.n+1,name:r.name,text:send});
+    if(!res.ok){
+      if(res.error==="auth"){$("dlg").close();logout();$("le").textContent="نشست منقضی شد. دوباره وارد شوید.";return}
+      throw new Error(res.error==="mismatch"?"ردیف جدول تغییر کرده است؛ دیالوگ را ببندید، «بروزرسانی» را بزنید و دوباره تلاش کنید.":res.error==="unknown"?"نسخه جدید اسکریپت هنوز در گوگل منتشر نشده است (Deploy → New version).":"ذخیره انجام نشد ("+res.error+")")
+    }
+    r.ed=send;recalc(r);draw();open(r);
+  }catch(x){em.className="em bad";em.textContent=x.name==="TypeError"?"اتصال برقرار نشد. اینترنت را بررسی کنید.":x.message;$("es").disabled=false}
+};
+// چاپ صفحه اول همه‌ی افراد فهرست فعلی، پشت‌سرهم
+let pall=false;
+function printAll(){
+  const v=view();if(!v.length)return;
+  $("pa").innerHTML=v.map(r=>`<section class="pp">${headHTML(r,false)}${sections(r,false).p1}<p class="note">${NOTE_TXT}</p></section>`).join("");
+  pall=true;document.body.classList.add("rp");window.print();
+}
+$("pall").onclick=printAll;
 $("cl").onclick=$("x").onclick=()=>$("dlg").close();
 $("dlg").addEventListener("close",()=>{document.body.style.overflow=""});
 // چاپ گزارش: محتوای دیالوگ در یک ظرف جدا کپی می‌شود تا صفحه‌بندی A4 درست انجام شود
-function fillPrint(){const on=$("dlg").open;$("pa").innerHTML=on?$("dc").innerHTML:"";document.body.classList.toggle("rp",on)}
+function fillPrint(){if(pall)return;const on=$("dlg").open;$("pa").innerHTML=on?$("dc").innerHTML:"";document.body.classList.toggle("rp",on)}
 window.addEventListener("beforeprint",fillPrint);
-window.addEventListener("afterprint",()=>{document.body.classList.remove("rp");$("pa").innerHTML=""});
+window.addEventListener("afterprint",()=>{pall=false;document.body.classList.remove("rp");$("pa").innerHTML=""});
 $("pr").onclick=()=>{fillPrint();window.print()};
 $("dlg").addEventListener("click",e=>{if(e.target===$("dlg"))$("dlg").close()});
 if(token)load();
